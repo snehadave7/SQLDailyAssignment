@@ -1,0 +1,320 @@
+CREATE DATABASE BikeStores
+go --To fix this, you can use GO (the batch separator) to break the statements into separate batches:
+
+-- create schemas
+CREATE SCHEMA production;
+go
+
+CREATE SCHEMA sales;
+go
+
+-- create tables
+CREATE TABLE production.categories (
+	category_id INT IDENTITY (1, 1) PRIMARY KEY,
+	category_name VARCHAR (255) NOT NULL
+);
+
+CREATE TABLE production.brands (
+	brand_id INT IDENTITY (1, 1) PRIMARY KEY,
+	brand_name VARCHAR (255) NOT NULL
+);
+
+CREATE TABLE production.products (
+	product_id INT IDENTITY (1, 1) PRIMARY KEY,
+	product_name VARCHAR (255) NOT NULL,
+	brand_id INT NOT NULL,
+	category_id INT NOT NULL,
+	model_year SMALLINT NOT NULL,
+	list_price DECIMAL (10, 2) NOT NULL,
+	FOREIGN KEY (category_id) REFERENCES production.categories (category_id) ON DELETE CASCADE ON UPDATE CASCADE,
+	FOREIGN KEY (brand_id) REFERENCES production.brands (brand_id) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE sales.customers (
+	customer_id INT IDENTITY (1, 1) PRIMARY KEY,
+	first_name VARCHAR (255) NOT NULL,
+	last_name VARCHAR (255) NOT NULL,
+	phone VARCHAR (25),
+	email VARCHAR (255) NOT NULL,
+	street VARCHAR (255),
+	city VARCHAR (50),
+	state VARCHAR (25),
+	zip_code VARCHAR (5)
+);
+
+CREATE TABLE sales.stores (
+	store_id INT IDENTITY (1, 1) PRIMARY KEY,
+	store_name VARCHAR (255) NOT NULL,
+	phone VARCHAR (25),
+	email VARCHAR (255),
+	street VARCHAR (255),
+	city VARCHAR (255),
+	state VARCHAR (10),
+	zip_code VARCHAR (5)
+);
+
+CREATE TABLE sales.staffs (
+	staff_id INT IDENTITY (1, 1) PRIMARY KEY,
+	first_name VARCHAR (50) NOT NULL,
+	last_name VARCHAR (50) NOT NULL,
+	email VARCHAR (255) NOT NULL UNIQUE,
+	phone VARCHAR (25),
+	active tinyint NOT NULL,
+	store_id INT NOT NULL,
+	manager_id INT,
+	FOREIGN KEY (store_id) REFERENCES sales.stores (store_id) ON DELETE CASCADE ON UPDATE CASCADE,
+	FOREIGN KEY (manager_id) REFERENCES sales.staffs (staff_id) ON DELETE NO ACTION ON UPDATE NO ACTION
+);
+
+CREATE TABLE sales.orders (
+	order_id INT IDENTITY (1, 1) PRIMARY KEY,
+	customer_id INT,
+	order_status tinyint NOT NULL,
+	-- Order status: 1 = Pending; 2 = Processing; 3 = Rejected; 4 = Completed
+	order_date DATE NOT NULL,
+	required_date DATE NOT NULL,
+	shipped_date DATE,
+	store_id INT NOT NULL,
+	staff_id INT NOT NULL,
+	FOREIGN KEY (customer_id) REFERENCES sales.customers (customer_id) ON DELETE CASCADE ON UPDATE CASCADE,
+	FOREIGN KEY (store_id) REFERENCES sales.stores (store_id) ON DELETE CASCADE ON UPDATE CASCADE,
+	FOREIGN KEY (staff_id) REFERENCES sales.staffs (staff_id) ON DELETE NO ACTION ON UPDATE NO ACTION
+);
+
+CREATE TABLE sales.order_items (
+	order_id INT,
+	item_id INT,
+	product_id INT NOT NULL,
+	quantity INT NOT NULL,
+	list_price DECIMAL (10, 2) NOT NULL,
+	discount DECIMAL (4, 2) NOT NULL DEFAULT 0,
+	PRIMARY KEY (order_id, item_id),
+	FOREIGN KEY (order_id) REFERENCES sales.orders (order_id) ON DELETE CASCADE ON UPDATE CASCADE,
+	FOREIGN KEY (product_id) REFERENCES production.products (product_id) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE production.stocks (
+	store_id INT,
+	product_id INT,
+	quantity INT,
+	PRIMARY KEY (store_id, product_id),
+	FOREIGN KEY (store_id) REFERENCES sales.stores (store_id) ON DELETE CASCADE ON UPDATE CASCADE,
+	FOREIGN KEY (product_id) REFERENCES production.products (product_id) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+
+------------------Stored Prodcedures---------------------
+/*
+create/alter procedure procedureName start procedurename with usp
+as
+begin
+procedure body
+end
+*/
+
+CREATE PROCEDURE uspDisplayMessage
+AS
+BEGIN
+PRINT 'Welcom to .Net React Session..'
+END
+
+/*
+EXECUTE uspDisplayMessage
+EXEC uspDisplayMessage
+uspDisplayMessage
+*/
+
+EXECUTE uspDisplayMessage
+
+CREATE PROC uspProductList
+as
+begin
+select Product_name,list_price from production.products
+order by product_name
+end
+
+exec uspProductList
+
+-------Alter procedure------
+ALTER PROC uspProductList
+AS
+Begin
+select product_name,model_year,list_price 
+from production.products
+END
+
+exec sp_rename 'uspProductList','uspMyProductList';
+
+-------parameter in stored procdeures
+-- input parameter,output parameter
+
+create proc uspFindProducts(@modelyear as int)
+as
+begin
+select * from production.products 
+where model_year=@modelyear
+end
+
+exec uspFindProducts 2019
+
+----------with multiple parameters
+
+create proc uspFindProductsByRange(@minPrice decimal,@maxPrice as decimal)
+as
+begin
+select * from production.products
+where list_price>=@minPrice and list_price<=@maxPrice
+end
+
+exec uspFindProductsByRange 100,300
+
+---------- using named parameters------------
+exec uspFindProductsByRange
+@maxPrice=300,@minPrice=100
+
+---------- optional parameter-----------------
+create proc uspFindProductsByName(@minPrice as decimal=2000,@maxPrice decimal,@name as varchar(20))
+as
+begin
+select * from production.products 
+where list_price>=@minPrice and list_price<=@maxPrice
+and product_name like '%'+@name+'%'
+end
+
+exec uspFindProductsByName 100,1000,'Sun'
+exec uspFindProductsByName @maxPrice=3000,@name='Trek'
+
+
+------------------output parameter-----------------------
+create proc uspFindProductCountByModelYear
+@modelyear int,@productCount int output
+as
+begin
+select product_name,list_price
+from production.products
+where model_year=@modelyear
+
+select @productCount=@@ROWCOUNT
+end
+
+declare @count int
+exec uspFindProductCountByModelYear @modelyear=2016,@productCount=@count output
+select @count as 'Number of products found'
+
+
+
+create proc uspTotalPrice @price int output
+as
+begin
+select sum(list_price) as price
+from production.products
+end
+
+declare @result decimal
+exec uspTotalPrice @price=@result output
+print @result
+
+--------call stored procedure inside another stored procedure-----------
+create proc usp_GetAllCustomers
+as
+begin
+select * from sales.customers
+end
+
+exec usp_GetAllCustomers
+
+create proc uspGetCustomerOrders
+@customerId int
+as 
+begin
+select * from sales.orders
+where customer_id=@customerId
+end
+
+exec uspGetCustomerOrders 1
+
+
+create proc uspGetCustomerData
+@customerId int
+as
+begin
+exec usp_GetAllCustomers
+exec uspGetCustomerOrders @customerId
+end
+
+exec uspGetCustomerData 1
+
+
+sp_help 'usp_getAllCustomers'
+id=if u want to hide these details
+--use WITH ENCRYPTION while creating procedure
+
+alter proc usp_GetAllCustomers
+with encryption
+as
+begin
+select * from sales.customers
+end
+--ctext will be null and encrypted=1
+-- cant modify if encrypted (right click on it in obj explorer)
+select * from SYSCOMments where ID=OBJECT_ID('usp_getAllCustomers')
+
+-- with recompile
+-- used in alter proc
+
+
+------- UserDefinedFunctions------------
+-- to hide logic and not to write again and again
+--scalar function and table valued function
+--scalar function return single value
+--table valued function returns a table
+-----SCALAR FUNCTION
+create function GetAllProducts()
+returns int
+as
+begin
+return (select count(*) from production.products)
+end
+
+print dbo.GetAllProducts()
+
+
+-----TABLE VALUED FUNCTION
+--not needed to write begin end if only 1 select statment is there
+--Inline Table Valued Function ==> Contains single select statment
+create function GetProductById(@productId int)
+returns table
+as
+return (select * from production.products where product_Id=@productId)
+
+select * from GetProductById(4)
+
+create function GetProductCategory()
+returns table
+as
+return( select * from production.categories
+)
+select * from dbo.GetProductCategory()
+
+
+---MultiStatement table valued functions---------
+--Contains multiple select statements
+
+create function GetEmployee()
+returns @TempTable Table (id int ,name varchar(20),dob date)
+as
+begin
+insert into @TempTable
+Select Id,Name,dob from employee
+return
+end
+
+select * from GetEmployee()
+
+update GetEmployee() set name='NewName' where Id=1;
+Msg 270, Level 16, State 1, Line 411
+Object 'GetEmployee' cannot be modified.
+-- cannot update because this is a multi valued table and it is using a temp table not a real table
+-- if it was single valued table we could have updated it
+
+
