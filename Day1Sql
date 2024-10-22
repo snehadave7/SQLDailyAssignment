@@ -1,0 +1,171 @@
+--Assignment 1----
+--You need to create a stored procedure that retrieves a list of all customers who have purchased a specific product.
+--consider below tables Customers, Orders,Order_items and Products
+--Create a stored procedure,it should return a list of all customers who have purchased the specified product, 
+--including customer details like CustomerID, CustomerName, and PurchaseDate.
+--The procedure should take a ProductID as an input parameter.
+ 
+ create proc uspGetSpecificProduct @productId int
+ as
+ begin
+ select C.customer_id,CONCAT(C.first_name,' ',C.last_name) as CustomerName,O.order_date
+ from sales.customers C
+ join sales.orders O on C.customer_id=O.customer_id
+ join sales.order_items OI on O.order_id=OI.order_id
+ join production.products P on P.product_id=OI.product_id
+ where P.product_id=@productId
+ end
+ exec uspGetSpecificProduct 2
+---Assignment 2
+--create table department with the below column id,name
+--Create table employee wuth the below columns Id,name,gender,dob,deptid.
+--Populate with test data
+
+create table department(
+deptId int identity primary key,
+name varchar(20)
+)
+
+create table Employee(
+id int identity primary key,
+name varchar(20),
+gender varchar(20),
+DOB date,
+DeptId int 
+foreign key(deptid) references department(deptId) 
+)
+
+insert into department values('It')
+insert into department values('Sales')
+insert into department values('Marketing')
+insert into department values('Products')
+insert into department values('Finance')
+
+insert into Employee values('Marvin Mullins','Male','1990-01-01',1)
+insert into Employee values('Johnathan Velazquez','Male','1999-02-01',2)
+insert into Employee values('Drucilla Gilliam','Female','1980-01-01',3)
+insert into Employee values('Yvone Guerrero','Female','1970-01-01',3)
+insert into Employee values('Carissa Cross','Male','1989-01-03',4)
+insert into Employee values('Josephine Dale','Male','1995-01-01',5)
+
+---a----
+-- Create a procedure to update the employee details in the emp table based on the emp id
+create proc uspUpdateEmpDetails @id int ,@name varchar(20), @gender VARCHAR(20), @DOB DATE,@DeptId INT 
+as
+begin
+update employee
+set 
+	name=@name,
+	gender=@gender,
+	dob=@DOB,
+	deptId=@DeptId
+
+where id=@id
+end
+exec uspUpdateEmpDetails 1 ,'Sneha','female','2020-10-10',2
+select * from employee
+
+-----b-----
+-- Create a procedure to get the emp info by passing the emp gender and departmentid from emp table
+create proc uspGetEmpDetails @gender varchar(20),@deptId int
+as
+begin
+select * from Employee E
+join department D on E.deptid=D.deptId 
+where E.gender=@gender and D.deptId=@deptId
+end
+
+exec uspGetEmpDetails 'male',5
+
+----c-----
+-- Create a procedure to get the count of emp based on gender input
+create proc uspCountEmp @gender varchar(20)
+as
+begin
+select count(id) as EmpCount
+from employee
+where gender=@gender
+end
+
+exec uspCountEmp 'male'
+
+--Assignment 3
+--Create a user Defined function to calculate the totalprice based on
+--productid and quantity products table
+
+select * from production.products
+select * from production.stocks
+
+create function TotalPrice(@id int,@quantity int)
+returns decimal
+as 
+begin
+Declare @TotalPrice Decimal
+select @TotalPrice=list_price*@quantity
+from production.products
+where product_id=@id
+return @TotalPrice
+end
+select dbo.TotalPrice(1,5) as TotalPrice
+
+---Assignment 4---
+--Create a function that returns all orders for a specific customer
+--including details such as orderId,orderDate, and the total amount 
+--of each order
+
+select * from sales.orders
+select * from sales.order_items
+
+create function GetAllOrders(@id int)
+returns table
+as
+return
+(
+
+select O.order_id,O.order_date,sum(OI.list_price*(1-OI.discount)*OI.quantity) as TotalAmount
+from sales.customers C join sales.orders as O
+ON C.customer_id=O.customer_id
+JOIN sales.order_items OI 
+ON OI.order_id=O.order_id
+where C.customer_id=@id
+GROUP BY O.order_id, O.order_date
+)
+select * from dbo.GetAllOrders(1)
+
+--Assignment 5----
+--Create a multiStatment table valued function that calculate the total sales
+-- for each product considering quantity and price
+
+create function TotalSales()
+returns @TempTable Table(product_id int,TotalSales decimal)
+as
+begin
+insert into @TempTable
+select P.product_id,sum(OI.list_price*(1-OI.discount) *quantity) as TotalSales
+from production.products as P
+join sales.order_items as OI
+on P.product_id=OI.product_id
+group by P.product_Id
+return
+end
+
+select * from dbo.TotalSales()
+---Assignment 6----
+--Create a multi statement table valued function that lists all customers
+--along with the total amount they have spent on orders
+
+create function GetAllCustomerWithTotalAmount()
+returns @TempTable Table(customer_id int,FullName varchar(50),TotalAmount decimal)
+as
+begin
+insert into @TempTable
+select C.customer_id,concat(C.first_Name,' ',C.last_Name) FullName, sum(OI.list_price*OI.quantity) as TotalAmount
+from sales.customers C 
+join sales.orders O on C.customer_id=O.customer_id
+join sales.order_items OI on OI.order_id=O.order_id
+group by C.customer_id, C.first_name,C.last_name
+order by TotalAmount
+return
+end
+
+select * from dbo.GetAllCustomerWithTotalAmount()
