@@ -79,7 +79,7 @@ exec uspGetEmpDetails 'male',5
 
 ----c-----
 -- Create a procedure to get the count of emp based on gender input
-create proc uspCountEmp @gender varchar(20)
+create proc uspCountEmp (@gender varchar(20),@Count int output)
 as
 begin
 select count(id) as EmpCount
@@ -87,7 +87,10 @@ from employee
 where gender=@gender
 end
 
-exec uspCountEmp 'male'
+declare @TCount int
+exec uspCountEmp 'male' , @Count=@TCount output
+print @TCount
+
 
 --Assignment 3
 --Create a user Defined function to calculate the totalprice based on
