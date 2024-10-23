@@ -1,0 +1,156 @@
+---ASSIGNMENT 7---
+--Create a trigger to update the stock(quantity) table whenever new order placed in orders 
+create TRIGGER trg_UpdateStock
+on sales.order_items
+after insert
+as
+begin
+update production.stocks 
+set quantity=production.stocks.quantity-inserted.quantity
+from inserted
+where production.stocks.product_id=inserted.product_id
+AND production.stocks.store_id=(select store_id from sales.orders where order_id=inserted.order_id)
+end
+
+select * from production.stocks
+select * from sales.order_items
+INSERT INTO sales.order_items (order_id, item_id, product_id, quantity, list_price, discount)
+VALUES (1, 8, 1, 7, 199.99, 0.1); 
+
+
+ 
+--Assignment 8--
+--Create a trigger to that prevents deletion of a customer if they have existing orders.
+
+ select * from sales.orders
+ select * from sales.customers
+ create trigger trg_CheckBeforeDeletion
+ on sales.customers
+ instead of delete
+ as
+ begin
+ declare @cust_id int
+ select @cust_id=customer_id from deleted
+ if exists(select 1 from sales.orders where customer_id=@cust_id)
+ begin
+ raiserror('Cannot delete customer with existing orders',16,1)
+ rollback transaction
+ end
+ else 
+ begin
+ delete from sales.customers where customer_id=@cust_id
+ end
+ end
+
+ delete from sales.customers
+ where customer_id=1
+
+--Assignment 9--
+--a)Create Employee,Employee_Audit  insert some test data
+--b) Create a Trigger that logs changes to the Employee Table into an Employee_Audit Table
+CREATE TABLE Orders(
+order_id int PRIMARY KEY,
+customer_id INT,
+order_date DATE
+)
+
+CREATE TABLE Order_audit(
+audit_id INT PRIMARY KEY identity,
+order_id INT,
+customer_id INT,
+order_date DATE,
+audit_date DateTime Default GetDate(),
+audit_info varchar(max)
+)
+
+CREATE TRIGGER trgAfterInsertOrder
+ON Orders
+AFTER INSERT --update/delete
+AS
+BEGIN
+declare @auditInfo nvarchar(1000)
+set @auditInfo='Data Inserted'
+INSERT INTO order_audit(order_id,customer_id,order_date,audit_info)
+select order_id,customer_id,order_date ,@auditInfo
+FROM INSERTED -- temp table maintained by sql server
+END
+
+insert into orders values(1001,31,'2020-01-01')
+select * from orders
+select * from order_audit
+
+
+CREATE TRIGGER trgAfterUpdateOrder
+ON Orders
+AFTER UPDATE --update/delete
+AS
+BEGIN
+--select * from deleted
+--select * from inserted
+declare @auditInfo nvarchar(1000)
+set @auditInfo='Data Changed'
+INSERT INTO order_audit(order_id,customer_id,order_date,audit_info)
+select order_id,customer_id,order_date ,@auditInfo
+FROM INSERTED
+END
+
+UPDATE orders
+set customer_id=33,
+	order_date='2024-10-10'
+WHERE order_id=1001  
+
+--Assignment 10-- 
+/*
+create Room Table with below columns RoomID,RoomType,Availability
+create Bookins Table with below columns BookingID,RoomID,CustomerName,CheckInDate,CheckInDate
+Insert some test data with both  the tables
+Ensure both the tables are having Entity relationship
+Write a transaction that books a room for a customer, ensuring the room is marked as unavailable.
+*/
+
+CREATE TABLE Rooms (
+    RoomID INT IDENTITY PRIMARY KEY,
+    RoomType VARCHAR(50),
+    Availability BIT 
+)
+CREATE TABLE Bookings (
+    BookingID INT IDENTITY PRIMARY KEY,
+    RoomID INT,
+    CustomerName VARCHAR(100),
+    CheckInDate DATE,
+    CheckOutDate DATE,
+    FOREIGN KEY (RoomID) REFERENCES Rooms(RoomID) ON DELETE CASCADE
+);
+
+INSERT INTO Rooms (RoomType, Availability) VALUES
+('Single', 1),
+('Double', 1),  
+('Suite', 1);
+
+BEGIN TRANSACTION;
+DECLARE @RoomID INT = 1; 
+DECLARE @CustomerName VARCHAR(100) = 'John Doe';
+DECLARE @CheckInDate DATE = '2024-10-25';
+DECLARE @CheckOutDate DATE = '2024-10-30';
+
+    DECLARE @Availability BIT;
+    SELECT @Availability = Availability FROM Rooms WHERE RoomID = @RoomID;
+
+    IF @Availability = 1
+    BEGIN
+        
+        INSERT INTO Bookings (RoomID, CustomerName, CheckInDate, CheckOutDate)
+        VALUES (@RoomID, @CustomerName, @CheckInDate, @CheckOutDate);
+
+        UPDATE Rooms
+        SET Availability = 0
+        WHERE RoomID = @RoomID;
+
+        COMMIT TRANSACTION;
+        PRINT 'Room booked successfully.';
+    END
+    ELSE
+    BEGIN
+        PRINT 'Room is not available.';
+        ROLLBACK TRANSACTION;
+    END
