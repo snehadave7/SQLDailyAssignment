@@ -1,0 +1,216 @@
+--INDEXERS
+-- A TABLE CAN HAVE MAX OF 1000 INDEXS(1+999)
+-- CAN CREATE ONLY 1 CLUSTERED INDEX PER TABLE
+-- CAN CREATE N NUMBER OF NON CLUSTERED INDEX PER TABLE
+-- IF A TABLE HAS PK AUTOMATICALLY CLUSTERED INDEX IS CREATED FOR THAT COLUMN
+-- CLUSTERED INDEX SORT THE DATA IN ASC BY DEFAULT
+-- NON CLUSTERED INDEX DOES NOT SORT THE DATA
+
+--CLUSTERED INDEX SYNTAX--
+-- IF PK DOES NOT EXIST THEN ONLY WE CAN CREATE CLUSTERED
+-- IF WE HAVE DUPLICATE VALUES IT WILL SORT AND STORE THE DATA
+CREATE CLUSTERED INDEX IDX_EMPLOYEE_ID1
+ON EMPLOYEE(ID ASC)
+ 
+
+--UNIQUE NON CLUSTERED INDEX 
+CREATE UNIQUE INDEX idx_unique_email
+ON sales.customers(email)
+
+--NON UNIQUE NON CLUSTERED INDEX 
+CREATE NONCLUSTERED INDEX idx_name
+ON sales.customers(first_name,last_name)
+---OR SIMPLY WRITE INDEX----
+CREATE INDEX IDX_EMPLOYEE_ID
+ON EMPLOYEE(ID ASC)
+
+-----VIEWS----
+-- USED TO HIDE DATA FROM USER,CAN SHOW ONLY THOES COLUMN THAT A USER NEED TO SEE
+-- IT IS A VIRTUAL TABLE
+--SIMPLE VIEW-> SHOW DATA OF ONLY 1 TABLE
+--COMPLEX VIEW-> SHOW DATA FROM MULTIPLE TABLE(USING JOIN OR SUBQUERY)
+CREATE VIEW vwEmpByDepart
+AS
+Select E.ID,E.Name,E.gender
+from Employee E
+select * from Employee
+SELECT * FROM vwEmpByDepart
+
+UPDATE vwEmpByDepart
+SET name='newname'
+where id=1
+
+--Cant perform insertion 
+--insert into is giving error--View is not updatable because the modification affects multiple tables
+-- we get error if more than 1 table value is getting affecting
+-- same for delete
+
+-- can perform insertion if only 1 table is getting affected.
+
+
+---Triggeres---
+
+CREATE TABLE Orders(
+order_id int PRIMARY KEY,
+customer_id INT,
+order_date DATE
+)
+
+CREATE TABLE Order_audit(
+audit_id INT PRIMARY KEY identity,
+order_id INT,
+customer_id INT,
+order_date DATE,
+audit_date DateTime Default GetDate(),
+audit_info varchar(max)
+)
+---------------AFTER/FOR TRIGGER--------------------
+--WITH INSERT--
+
+CREATE TRIGGER trgAfterInsertOrder
+ON Orders
+AFTER INSERT --update/delete
+AS
+BEGIN
+declare @auditInfo nvarchar(1000)
+set @auditInfo='Data Inserted'
+INSERT INTO order_audit(order_id,customer_id,order_date,audit_info)
+select order_id,customer_id,order_date ,@auditInfo
+FROM INSERTED -- temp table maintained by sql server
+END
+
+insert into orders values(1001,31,'2020-01-01')
+select * from orders
+select * from order_audit
+
+--WITH UPDATE--
+CREATE TRIGGER trgAfterUpdateOrder
+ON Orders
+AFTER UPDATE --update/delete
+AS
+BEGIN
+--select * from deleted
+--select * from inserted
+declare @auditInfo nvarchar(1000)
+set @auditInfo='Data Changed'
+INSERT INTO order_audit(order_id,customer_id,order_date,audit_info)
+select order_id,customer_id,order_date ,@auditInfo
+FROM INSERTED
+END
+
+UPDATE orders
+set customer_id=33,
+	order_date='2024-10-10'
+WHERE order_id=1001  
+/*
+The reason why the order_audit table is creating a new row instead of updating an existing row is that the AFTER UPDATE trigger
+is designed to log changes by inserting new records into order_audit, regardless of whether a record for the same order_id already
+exists in the audit table.
+*/
+
+--INSTEAD OF TRIGGER--
+CREATE VIEW vwEmployeeDetails
+AS
+SELECT Id,E.name as EmpName,gender,D.Name as DeptName from Employee E
+join department D on E.DeptId=D.deptId
+
+select * from vwEmployeeDetails
+
+CREATE TRIGGER trg_vwEmployeeDetails_InsteadOfInsert
+ON vwEmployeeDetails
+INSTEAD OF INSERT
+AS
+BEGIN
+DECLARE @deptId int
+select @deptId=DeptId from department
+join inserted
+on inserted.DeptName=department.Name
+
+if(@deptId is null)
+BEGIN
+Raiserror('Invalid dept name. Statement terminated',16,1)
+RETURN
+END
+insert into Employee(name,gender,deptid)
+select EmpName,gender,@deptId
+from inserted
+END
+
+select* from Employee
+select* from department
+select * from vwEmployeeDetails
+
+insert vwEmployeeDetails values(7,'TINA','FEMALE','sales')
+insert vwEmployeeDetails values(8,'TINA','FEMALE','BANKING')
+
+select* from sales.orders
+----TRANSACTIONS-------
+BEGIN TRANSACTION
+Insert into sales.orders values(1,4,'12-1-2024','12-1-2024','12-1-2024',1,2)
+Insert into sales.order_items(order_id,item_id,product_id,quantity,list_price,discount)
+values(1,10,8,2,269.99,0.07)
+
+IF @@ERROR=0
+BEGIN
+COMMIT TRANSACTION
+PRINT 'Insertion successfull...'
+END
+ELSE
+BEGIN
+ROLLBACK TRANSACTION
+PRINT 'Something went wrong while inserting'
+END
+
+select * from production.products where product_id=8
+-- again and again when i was getting error in this the transaction
+--rolled back so nothing got added actually and it all started
+--again.. this is the use of transaction 
+-- nothing got actually inserted even though 1 insert was correct.
+-- it only got inserted when eveything came successfull.
+
+
+CREATE TABLE CUSTOMERS1(
+cust_id int primary key,
+name varchar(100),
+active bit
+)
+CREATE TABLE ORDERS1(
+order_id int primary key,
+cust_id int foreign key references customers1(cust_id),
+order_status varchar(100),
+)
+insert into CUSTOMERS1 values
+(1,'Pam',1), (2,'Kim',1)
+insert into orders1 values
+(101,1,'Pending'), (102,2,'Pending')
+
+select * from ORDERS1
+select * from CUSTOMERS1
+
+--Transaction A--
+BEGIN TRANSACTION
+UPDATE CUSTOMERS1 SET name='John'
+WHERE cust_id=1
+
+WAITFOR DELAY '00:00:05'
+UPDATE ORDERS1 SET order_status='Processed'
+WHERE order_id=101
+
+COMMIT TRANSACTION
+/*
+(1 row affected)
+Msg 1205, Level 13, State 51, Line 700
+Transaction (Process ID 86) was deadlocked on lock resources with another process and has been chosen as the deadlock victim. Rerun the transaction.
+
+*/
+--Transaction B--
+BEGIN TRANSACTION
+UPDATE ORDERS1 SET order_status='Shipped'
+WHERE order_id=101
+
+WAITFOR DELAY '00:00:05'
+UPDATE CUSTOMERS1 SET name='sneha'
+WHERE cust_id=1
+
+COMMIT TRANSACTION
+
